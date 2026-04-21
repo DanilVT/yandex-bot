@@ -1,0 +1,8 @@
+{
+  "name": "yandex-bot",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "form-data": "^4.0.0"
+  }
+}
