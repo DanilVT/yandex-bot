@@ -15,6 +15,11 @@ const USERS = {
     queue: "DARIAISAEVA",
     assignee: "daria",
     tag: "from_bot_personal"
+  },
+  "test4@panelgroup.ru": {
+    queue: "TESTT",
+    assignee: "test4",
+    tag: "from_bot_personal"
   }
 };
 
