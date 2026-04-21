@@ -1,9 +1,27 @@
 const awaitingTask = new Set();
 
+const USERS = {
+  danil: {
+    queue: "DANILVITT",
+    assignee: "danil",
+    tag: "from_bot_personal"
+  },
+  timothy: {
+    queue: "TIMOFEICHETIN",
+    assignee: "timothy",
+    tag: "from_bot_personal"
+  },
+  daria: {
+    queue: "DARIAISAEVA",
+    assignee: "daria",
+    tag: "from_bot_personal"
+  }
+};
+
 async function sendBotMessage(login, text, withMenu = false) {
   const body = {
     login,
-    text,
+    text
   };
 
   if (withMenu) {
@@ -42,7 +60,18 @@ async function sendBotMessage(login, text, withMenu = false) {
   console.log("MESSENGER RESPONSE:", response.status, resultText);
 }
 
-async function createTrackerIssue(summary) {
+async function createTrackerIssue(summary, login) {
+  const user = USERS[login];
+
+  if (!user) {
+    return {
+      ok: false,
+      status: 400,
+      data: null,
+      raw: "Пользователь не настроен"
+    };
+  }
+
   const response = await fetch(
     "https://api.tracker.yandex.net/v3/issues/",
     {
@@ -54,9 +83,9 @@ async function createTrackerIssue(summary) {
       },
       body: JSON.stringify({
         summary,
-        queue: "DANILVITT",
-        assignee: "danil",
-        tags: ["from_bot_personal"]
+        queue: user.queue,
+        assignee: user.assignee,
+        tags: [user.tag]
       })
     }
   );
@@ -92,10 +121,20 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    const serverActionName =
-      update?.bot_request?.server_action?.name;
+    const user = USERS[login];
+
+    const serverActionName = update?.bot_request?.server_action?.name;
 
     if (serverActionName === "create_personal_task") {
+      if (!user) {
+        await sendBotMessage(
+          login,
+          "Ты пока не настроен в боте. Обратись к администратору.",
+          true
+        );
+        return res.status(200).end();
+      }
+
       awaitingTask.add(login);
 
       await sendBotMessage(
@@ -129,7 +168,16 @@ export default async function handler(req, res) {
 
     awaitingTask.delete(login);
 
-    const tracker = await createTrackerIssue(text);
+    if (!user) {
+      await sendBotMessage(
+        login,
+        "Ты пока не настроен в боте. Обратись к администратору.",
+        true
+      );
+      return res.status(200).end();
+    }
+
+    const tracker = await createTrackerIssue(text, login);
 
     if (tracker.ok) {
       const issueKey = tracker?.data?.key || "создана";
