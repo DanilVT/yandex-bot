@@ -21,11 +21,11 @@ const USERS = {
 // Подставь сюда реальные прямые ссылки на docx-файлы
 const TEMPLATE_FILES = {
   card: {
-    url: "https://wiki.yandex.ru/homepage/proizvodstvennye-dokumenty/.files/obrazeckartochkinaproizvodstvo-2.docx",
+    url: "https://yandex-bot.vercel.app/templates/cartochka.docx",
     filename: "Карточка.docx"
   },
   specification: {
-    url: "https://wiki.yandex.ru/homepage/proizvodstvennye-dokumenty/.files/shablonspecifikacii.docx",
+    url: "https://yandex-bot.vercel.app/templates/specification.docx",
     filename: "Спецификация.docx"
   }
 };
