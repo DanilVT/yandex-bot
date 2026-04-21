@@ -1,3 +1,5 @@
+import FormData from "form-data";
+
 const userStates = new Map();
 
 const USERS = {
@@ -147,30 +149,29 @@ async function sendBotFile(login, fileUrl, filename) {
     console.log("FILE DOWNLOAD ERROR:", fileResponse.status);
     return {
       ok: false,
-      status: fileResponse.status
+      status: fileResponse.status,
+      raw: `Не удалось скачать файл: ${fileResponse.status}`
     };
   }
 
-  const buffer = await fileResponse.arrayBuffer();
+  const buffer = Buffer.from(await fileResponse.arrayBuffer());
 
-  const formData = new FormData();
-  formData.append("login", login);
-  formData.append(
-    "file",
-    new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    }),
-    filename
-  );
+  const form = new FormData();
+  form.append("login", login);
+  form.append("file", buffer, {
+    filename,
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  });
 
   const response = await fetch(
     "https://botapi.messenger.yandex.net/bot/v1/messages/sendFile/",
     {
       method: "POST",
       headers: {
-        "Authorization": `OAuth ${process.env.BOT_TOKEN}`
+        "Authorization": `OAuth ${process.env.BOT_TOKEN}`,
+        ...form.getHeaders()
       },
-      body: formData
+      body: form
     }
   );
 
