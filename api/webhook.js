@@ -18,7 +18,6 @@ const USERS = {
   }
 };
 
-// Подставь сюда реальные прямые ссылки на docx-файлы
 const TEMPLATE_FILES = {
   card: {
     url: "https://yandex-bot.vercel.app/templates/cartochka.docx",
@@ -133,35 +132,28 @@ async function sendBotMessage(login, text, menu = "main") {
 
   const resultText = await response.text();
   console.log("MESSENGER RESPONSE:", response.status, resultText);
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    raw: resultText
+  };
 }
 
 async function sendBotFile(login, fileUrl, filename) {
-  const fileResponse = await fetch(fileUrl);
-
-  if (!fileResponse.ok) {
-    throw new Error(`Не удалось скачать файл: ${fileResponse.status}`);
-  }
-
-  const fileBuffer = Buffer.from(await fileResponse.arrayBuffer());
-
-  const formData = new FormData();
-  formData.append("login", login);
-  formData.append(
-    "file",
-    new Blob([fileBuffer], {
-      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    }),
-    filename
-  );
-
   const response = await fetch(
     "https://botapi.messenger.yandex.net/bot/v1/messages/sendFile/",
     {
       method: "POST",
       headers: {
-        "Authorization": `OAuth ${process.env.BOT_TOKEN}`
+        "Authorization": `OAuth ${process.env.BOT_TOKEN}`,
+        "Content-Type": "application/json"
       },
-      body: formData
+      body: JSON.stringify({
+        login,
+        file_url: fileUrl,
+        file_name: filename
+      })
     }
   );
 
