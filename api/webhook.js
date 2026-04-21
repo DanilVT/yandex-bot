@@ -1,5 +1,3 @@
-import FormData from "form-data";
-
 const userStates = new Map();
 
 const USERS = {
@@ -142,49 +140,6 @@ async function sendBotMessage(login, text, menu = "main") {
   };
 }
 
-async function sendBotFile(login, fileUrl, filename) {
-  const fileResponse = await fetch(fileUrl);
-
-  if (!fileResponse.ok) {
-    console.log("FILE DOWNLOAD ERROR:", fileResponse.status);
-    return {
-      ok: false,
-      status: fileResponse.status,
-      raw: `Не удалось скачать файл: ${fileResponse.status}`
-    };
-  }
-
-  const buffer = Buffer.from(await fileResponse.arrayBuffer());
-
-  const form = new FormData();
-  form.append("login", login);
-  form.append("file", buffer, {
-    filename,
-    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-  });
-
-  const response = await fetch(
-    "https://botapi.messenger.yandex.net/bot/v1/messages/sendFile/",
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `OAuth ${process.env.BOT_TOKEN}`,
-        ...form.getHeaders()
-      },
-      body: form
-    }
-  );
-
-  const resultText = await response.text();
-  console.log("SEND FILE RESULT:", response.status, resultText);
-
-  return {
-    ok: response.ok,
-    status: response.status,
-    raw: resultText
-  };
-}
-
 async function createTrackerIssue(summary, description, login) {
   const user = USERS[login];
 
@@ -293,62 +248,20 @@ export default async function handler(req, res) {
     }
 
     if (serverActionName === "send_template_card") {
-      try {
-        const file = TEMPLATE_FILES.card;
-        const result = await sendBotFile(login, file.url, file.filename);
-
-        if (!result.ok) {
-          await sendBotMessage(
-            login,
-            `Не удалось отправить файл. Код: ${result.status}`,
-            "templates"
-          );
-        } else {
-          await sendBotMessage(
-            login,
-            "Файл отправлен",
-            "templates"
-          );
-        }
-      } catch (error) {
-        console.log("SEND FILE ERROR:", error?.message || error);
-        await sendBotMessage(
-          login,
-          "Не удалось отправить файл",
-          "templates"
-        );
-      }
-
+      await sendBotMessage(
+        login,
+        `Карточка:\n${TEMPLATE_FILES.card.url}`,
+        "templates"
+      );
       return res.status(200).end();
     }
 
     if (serverActionName === "send_template_specification") {
-      try {
-        const file = TEMPLATE_FILES.specification;
-        const result = await sendBotFile(login, file.url, file.filename);
-
-        if (!result.ok) {
-          await sendBotMessage(
-            login,
-            `Не удалось отправить файл. Код: ${result.status}`,
-            "templates"
-          );
-        } else {
-          await sendBotMessage(
-            login,
-            "Файл отправлен",
-            "templates"
-          );
-        }
-      } catch (error) {
-        console.log("SEND FILE ERROR:", error?.message || error);
-        await sendBotMessage(
-          login,
-          "Не удалось отправить файл",
-          "templates"
-        );
-      }
-
+      await sendBotMessage(
+        login,
+        `Спецификация:\n${TEMPLATE_FILES.specification.url}`,
+        "templates"
+      );
       return res.status(200).end();
     }
 
