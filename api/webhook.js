@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     const trackerResponse = await fetch("https://api.tracker.yandex.net/v3/issues/", {
       method: "POST",
       headers: {
-        "Authorization": `OAuth ${process.env.YANDEX_TOKEN}`,
+        "Authorization": `OAuth ${process.env.OAUTH_TOKEN}`,
         "X-Org-ID": process.env.ORG_ID,
         "Content-Type": "application/json"
       },
