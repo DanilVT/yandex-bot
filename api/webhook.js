@@ -1,17 +1,17 @@
 const awaitingTask = new Set();
 
 const USERS = {
-  danil: {
+  "danil@panelgroup.ru": {
     queue: "DANILVITT",
     assignee: "danil",
     tag: "from_bot_personal"
   },
-  timothy: {
+  "timothy@panelgroup.ru": {
     queue: "TIMOFEICHETIN",
     assignee: "timothy",
     tag: "from_bot_personal"
   },
-  daria: {
+  "daria@panelgroup.ru": {
     queue: "DARIAISAEVA",
     assignee: "daria",
     tag: "from_bot_personal"
