@@ -1,4 +1,4 @@
-const awaitingTask = new Set();
+const userStates = new Map();
 
 const USERS = {
   "danil@panelgroup.ru": {
@@ -14,11 +14,6 @@ const USERS = {
   "daria@panelgroup.ru": {
     queue: "DARIAISAEVA",
     assignee: "daria",
-    tag: "from_bot_personal"
-  },
-  "test4@panelgroup.ru": {
-    queue: "TESTT",
-    assignee: "test4",
     tag: "from_bot_personal"
   }
 };
@@ -65,7 +60,7 @@ async function sendBotMessage(login, text, withMenu = false) {
   console.log("MESSENGER RESPONSE:", response.status, resultText);
 }
 
-async function createTrackerIssue(summary, login) {
+async function createTrackerIssue(summary, description, login) {
   const user = USERS[login];
 
   if (!user) {
@@ -88,6 +83,7 @@ async function createTrackerIssue(summary, login) {
       },
       body: JSON.stringify({
         summary,
+        description,
         queue: user.queue,
         assignee: user.assignee,
         tags: [user.tag]
@@ -127,8 +123,8 @@ export default async function handler(req, res) {
     }
 
     const user = USERS[login];
-
     const serverActionName = update?.bot_request?.server_action?.name;
+    const text = (update?.text || "").trim();
 
     if (serverActionName === "create_personal_task") {
       if (!user) {
@@ -140,18 +136,18 @@ export default async function handler(req, res) {
         return res.status(200).end();
       }
 
-      awaitingTask.add(login);
+      userStates.set(login, {
+        step: "awaiting_summary"
+      });
 
       await sendBotMessage(
         login,
-        "Напиши задачу одним сообщением",
+        "Напиши название задачи одним сообщением",
         false
       );
 
       return res.status(200).end();
     }
-
-    const text = (update?.text || "").trim();
 
     if (!text) {
       await sendBotMessage(
@@ -162,7 +158,9 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    if (!awaitingTask.has(login)) {
+    const currentState = userStates.get(login);
+
+    if (!currentState) {
       await sendBotMessage(
         login,
         "Нажми кнопку ниже",
@@ -171,9 +169,9 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    awaitingTask.delete(login);
-
     if (!user) {
+      userStates.delete(login);
+
       await sendBotMessage(
         login,
         "Ты пока не настроен в боте. Обратись к администратору.",
@@ -182,22 +180,54 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    const tracker = await createTrackerIssue(text, login);
+    if (currentState.step === "awaiting_summary") {
+      userStates.set(login, {
+        step: "awaiting_description",
+        summary: text
+      });
 
-    if (tracker.ok) {
-      const issueKey = tracker?.data?.key || "создана";
       await sendBotMessage(
         login,
-        `Задача создана: ${issueKey}`,
-        true
+        "Теперь напиши описание задачи одним сообщением",
+        false
       );
-    } else {
-      await sendBotMessage(
-        login,
-        `Не удалось создать задачу. Код: ${tracker.status}`,
-        true
-      );
+
+      return res.status(200).end();
     }
+
+    if (currentState.step === "awaiting_description") {
+      const summary = currentState.summary;
+      const description = text;
+
+      userStates.delete(login);
+
+      const tracker = await createTrackerIssue(summary, description, login);
+
+      if (tracker.ok) {
+        const issueKey = tracker?.data?.key || "создана";
+        await sendBotMessage(
+          login,
+          `Задача создана: ${issueKey}`,
+          true
+        );
+      } else {
+        await sendBotMessage(
+          login,
+          `Не удалось создать задачу. Код: ${tracker.status}`,
+          true
+        );
+      }
+
+      return res.status(200).end();
+    }
+
+    userStates.delete(login);
+
+    await sendBotMessage(
+      login,
+      "Что-то пошло не так. Нажми кнопку ниже ещё раз.",
+      true
+    );
 
     return res.status(200).end();
   } catch (error) {
