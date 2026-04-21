@@ -18,29 +18,104 @@ const USERS = {
   }
 };
 
-async function sendBotMessage(login, text, withMenu = false) {
+// Подставь сюда реальные прямые ссылки на docx-файлы
+const TEMPLATE_FILES = {
+  card: {
+    url: "https://wiki.yandex.ru/homepage/proizvodstvennye-dokumenty/.files/obrazeckartochkinaproizvodstvo-2.docx",
+    filename: "Карточка.docx"
+  },
+  specification: {
+    url: "https://wiki.yandex.ru/homepage/proizvodstvennye-dokumenty/.files/shablonspecifikacii.docx",
+    filename: "Спецификация.docx"
+  }
+};
+
+async function sendBotMessage(login, text, menu = "main") {
   const body = {
     login,
     text
   };
 
-  if (withMenu) {
+  if (menu === "main") {
     body.suggest_buttons = {
       layout: "true",
       persist: true,
-      buttons: [[
-        {
-          id: "personal-task-btn",
-          title: "Трекер: личная задача",
-          directives: [
-            {
-              type: "server_action",
-              name: "create_personal_task",
-              payload: { mode: "personal_task" }
-            }
-          ]
-        }
-      ]]
+      buttons: [
+        [
+          {
+            id: "personal-task-btn",
+            title: "Трекер: личная задача",
+            directives: [
+              {
+                type: "server_action",
+                name: "create_personal_task",
+                payload: { mode: "personal_task" }
+              }
+            ]
+          }
+        ],
+        [
+          {
+            id: "templates-btn",
+            title: "Шаблоны",
+            directives: [
+              {
+                type: "server_action",
+                name: "open_templates",
+                payload: { mode: "templates" }
+              }
+            ]
+          }
+        ]
+      ]
+    };
+  }
+
+  if (menu === "templates") {
+    body.suggest_buttons = {
+      layout: "true",
+      persist: true,
+      buttons: [
+        [
+          {
+            id: "template-card-btn",
+            title: "Карточка",
+            directives: [
+              {
+                type: "server_action",
+                name: "send_template_card",
+                payload: { template: "card" }
+              }
+            ]
+          }
+        ],
+        [
+          {
+            id: "template-specification-btn",
+            title: "Спецификация",
+            directives: [
+              {
+                type: "server_action",
+                name: "send_template_specification",
+                payload: { template: "specification" }
+              }
+            ]
+          }
+        ],
+        [
+          {
+            id: "back-to-main-btn",
+            title: "Назад",
+            directives: [
+              {
+                type: "server_action",
+                name: "back_to_main_menu",
+                payload: { mode: "main" }
+              }
+            ]
+          }
+        ]
+      ]
     };
   }
 
@@ -58,6 +133,46 @@ async function sendBotMessage(login, text, withMenu = false) {
 
   const resultText = await response.text();
   console.log("MESSENGER RESPONSE:", response.status, resultText);
+}
+
+async function sendBotFile(login, fileUrl, filename) {
+  const fileResponse = await fetch(fileUrl);
+
+  if (!fileResponse.ok) {
+    throw new Error(`Не удалось скачать файл: ${fileResponse.status}`);
+  }
+
+  const fileBuffer = Buffer.from(await fileResponse.arrayBuffer());
+
+  const formData = new FormData();
+  formData.append("login", login);
+  formData.append(
+    "file",
+    new Blob([fileBuffer], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    }),
+    filename
+  );
+
+  const response = await fetch(
+    "https://botapi.messenger.yandex.net/bot/v1/messages/sendFile/",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `OAuth ${process.env.BOT_TOKEN}`
+      },
+      body: formData
+    }
+  );
+
+  const resultText = await response.text();
+  console.log("MESSENGER FILE RESPONSE:", response.status, resultText);
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    raw: resultText
+  };
 }
 
 async function createTrackerIssue(summary, description, login) {
@@ -131,7 +246,7 @@ export default async function handler(req, res) {
         await sendBotMessage(
           login,
           "Ты пока не настроен в боте. Обратись к администратору.",
-          true
+          "main"
         );
         return res.status(200).end();
       }
@@ -143,8 +258,86 @@ export default async function handler(req, res) {
       await sendBotMessage(
         login,
         "Напиши название задачи одним сообщением",
-        false
+        "none"
       );
+
+      return res.status(200).end();
+    }
+
+    if (serverActionName === "open_templates") {
+      await sendBotMessage(
+        login,
+        "Выбери нужный шаблон",
+        "templates"
+      );
+      return res.status(200).end();
+    }
+
+    if (serverActionName === "back_to_main_menu") {
+      await sendBotMessage(
+        login,
+        "Главное меню",
+        "main"
+      );
+      return res.status(200).end();
+    }
+
+    if (serverActionName === "send_template_card") {
+      try {
+        const file = TEMPLATE_FILES.card;
+        const result = await sendBotFile(login, file.url, file.filename);
+
+        if (!result.ok) {
+          await sendBotMessage(
+            login,
+            `Не удалось отправить файл. Код: ${result.status}`,
+            "templates"
+          );
+        } else {
+          await sendBotMessage(
+            login,
+            "Файл отправлен",
+            "templates"
+          );
+        }
+      } catch (error) {
+        console.log("SEND FILE ERROR:", error?.message || error);
+        await sendBotMessage(
+          login,
+          "Не удалось отправить файл",
+          "templates"
+        );
+      }
+
+      return res.status(200).end();
+    }
+
+    if (serverActionName === "send_template_specification") {
+      try {
+        const file = TEMPLATE_FILES.specification;
+        const result = await sendBotFile(login, file.url, file.filename);
+
+        if (!result.ok) {
+          await sendBotMessage(
+            login,
+            `Не удалось отправить файл. Код: ${result.status}`,
+            "templates"
+          );
+        } else {
+          await sendBotMessage(
+            login,
+            "Файл отправлен",
+            "templates"
+          );
+        }
+      } catch (error) {
+        console.log("SEND FILE ERROR:", error?.message || error);
+        await sendBotMessage(
+          login,
+          "Не удалось отправить файл",
+          "templates"
+        );
+      }
 
       return res.status(200).end();
     }
@@ -153,7 +346,7 @@ export default async function handler(req, res) {
       await sendBotMessage(
         login,
         "Нажми кнопку ниже",
-        true
+        "main"
       );
       return res.status(200).end();
     }
@@ -164,7 +357,7 @@ export default async function handler(req, res) {
       await sendBotMessage(
         login,
         "Нажми кнопку ниже",
-        true
+        "main"
       );
       return res.status(200).end();
     }
@@ -175,7 +368,7 @@ export default async function handler(req, res) {
       await sendBotMessage(
         login,
         "Ты пока не настроен в боте. Обратись к администратору.",
-        true
+        "main"
       );
       return res.status(200).end();
     }
@@ -189,7 +382,7 @@ export default async function handler(req, res) {
       await sendBotMessage(
         login,
         "Теперь напиши описание задачи одним сообщением",
-        false
+        "none"
       );
 
       return res.status(200).end();
@@ -208,13 +401,13 @@ export default async function handler(req, res) {
         await sendBotMessage(
           login,
           `Задача создана: ${issueKey}`,
-          true
+          "main"
         );
       } else {
         await sendBotMessage(
           login,
           `Не удалось создать задачу. Код: ${tracker.status}`,
-          true
+          "main"
         );
       }
 
@@ -226,7 +419,7 @@ export default async function handler(req, res) {
     await sendBotMessage(
       login,
       "Что-то пошло не так. Нажми кнопку ниже ещё раз.",
-      true
+      "main"
     );
 
     return res.status(200).end();
