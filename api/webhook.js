@@ -4,12 +4,14 @@ const USERS = {
   "danil@panelgroup.ru": {
     queue: "DANILVITT",
     assignee: "danil",
-    tag: "from_bot_personal"
+    tag: "from_bot_personal",
+    bitrixAssignedById: 22
   },
   "timothy@panelgroup.ru": {
     queue: "TIMOFEICHETIN",
     assignee: "timothy",
-    tag: "from_bot_personal"
+    tag: "from_bot_personal",
+    bitrixAssignedById: 1897
   },
   "daria@panelgroup.ru": {
     queue: "DARIAISAEVA",
@@ -30,10 +32,7 @@ const TEMPLATE_FILES = {
 };
 
 async function sendBotMessage(login, text, menu = "main") {
-  const body = {
-    login,
-    text
-  };
+  const body = { login, text };
 
   if (menu === "main") {
     body.suggest_buttons = {
@@ -42,28 +41,20 @@ async function sendBotMessage(login, text, menu = "main") {
       buttons: [
         [
           {
-            id: "personal-task-btn",
             title: "Трекер: личная задача",
-            directives: [
-              {
-                type: "server_action",
-                name: "create_personal_task",
-                payload: { mode: "personal_task" }
-              }
-            ]
+            directives: [{ type: "server_action", name: "create_personal_task" }]
           }
         ],
         [
           {
-            id: "templates-btn",
+            title: "CRM: новый лид",
+            directives: [{ type: "server_action", name: "create_bitrix_lead" }]
+          }
+        ],
+        [
+          {
             title: "Шаблоны",
-            directives: [
-              {
-                type: "server_action",
-                name: "open_templates",
-                payload: { mode: "templates" }
-              }
-            ]
+            directives: [{ type: "server_action", name: "open_templates" }]
           }
         ]
       ]
@@ -77,277 +68,199 @@ async function sendBotMessage(login, text, menu = "main") {
       buttons: [
         [
           {
-            id: "template-card-btn",
             title: "Карточка",
-            directives: [
-              {
-                type: "server_action",
-                name: "send_template_card",
-                payload: { template: "card" }
-              }
-            ]
+            directives: [{ type: "server_action", name: "send_template_card" }]
           }
         ],
         [
           {
-            id: "template-specification-btn",
             title: "Спецификация",
-            directives: [
-              {
-                type: "server_action",
-                name: "send_template_specification",
-                payload: { template: "specification" }
-              }
-            ]
+            directives: [{ type: "server_action", name: "send_template_specification" }]
           }
         ],
         [
           {
-            id: "back-to-main-btn",
             title: "Назад",
-            directives: [
-              {
-                type: "server_action",
-                name: "back_to_main_menu",
-                payload: { mode: "main" }
-              }
-            ]
+            directives: [{ type: "server_action", name: "back_to_main_menu" }]
           }
         ]
       ]
     };
   }
 
-  const response = await fetch(
-    "https://botapi.messenger.yandex.net/bot/v1/messages/sendText/",
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `OAuth ${process.env.BOT_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(body)
-    }
-  );
-
-  const resultText = await response.text();
-  console.log("MESSENGER RESPONSE:", response.status, resultText);
-
-  return {
-    ok: response.ok,
-    status: response.status,
-    raw: resultText
-  };
+  await fetch("https://botapi.messenger.yandex.net/bot/v1/messages/sendText/", {
+    method: "POST",
+    headers: {
+      Authorization: `OAuth ${process.env.BOT_TOKEN}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
 }
 
 async function createTrackerIssue(summary, description, login) {
   const user = USERS[login];
+  if (!user) return { ok: false };
 
-  if (!user) {
-    return {
-      ok: false,
-      status: 400,
-      data: null,
-      raw: "Пользователь не настроен"
-    };
-  }
+  const response = await fetch("https://api.tracker.yandex.net/v3/issues/", {
+    method: "POST",
+    headers: {
+      Authorization: `OAuth ${process.env.OAUTH_TOKEN}`,
+      "X-Org-ID": process.env.ORG_ID,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      summary,
+      description,
+      queue: user.queue,
+      assignee: user.assignee,
+      tags: [user.tag]
+    })
+  });
+
+  const data = await response.json();
+  return { ok: response.ok, data };
+}
+
+async function createBitrixLead(title, comment, login) {
+  const user = USERS[login];
 
   const response = await fetch(
-    "https://api.tracker.yandex.net/v3/issues/",
+    `${process.env.BITRIX_WEBHOOK}crm.lead.add.json`,
     {
       method: "POST",
-      headers: {
-        "Authorization": `OAuth ${process.env.OAUTH_TOKEN}`,
-        "X-Org-ID": process.env.ORG_ID,
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        summary,
-        description,
-        queue: user.queue,
-        assignee: user.assignee,
-        tags: [user.tag]
+        fields: {
+          TITLE: title,
+          COMMENTS: comment,
+          ASSIGNED_BY_ID: user?.bitrixAssignedById || 1
+        }
       })
     }
   );
 
-  const resultText = await response.text();
-  console.log("TRACKER RESPONSE:", response.status, resultText);
-
-  let resultJson = null;
-  try {
-    resultJson = JSON.parse(resultText);
-  } catch (_) {}
-
-  return {
-    ok: response.ok,
-    status: response.status,
-    data: resultJson,
-    raw: resultText
-  };
+  const data = await response.json();
+  return { ok: response.ok, data };
 }
 
 export default async function handler(req, res) {
   try {
-    const data = req.body;
-    console.log("UPDATE:", JSON.stringify(data));
-
-    const update = data?.updates?.[0];
-    if (!update) {
-      return res.status(200).end();
-    }
+    const update = req.body?.updates?.[0];
+    if (!update) return res.status(200).end();
 
     const login = update?.from?.login;
-    if (!login) {
-      return res.status(200).end();
-    }
+    const text = (update?.text || "").trim();
+    const action = update?.bot_request?.server_action?.name;
 
     const user = USERS[login];
-    const serverActionName = update?.bot_request?.server_action?.name;
-    const text = (update?.text || "").trim();
 
-    if (serverActionName === "create_personal_task") {
+    // --- КНОПКИ ---
+    if (action === "create_personal_task") {
       if (!user) {
-        await sendBotMessage(
-          login,
-          "Ты пока не настроен в боте. Обратись к администратору.",
-          "main"
-        );
+        await sendBotMessage(login, "Ты не настроен", "main");
         return res.status(200).end();
       }
 
-      userStates.set(login, {
-        step: "awaiting_summary"
-      });
+      userStates.set(login, { step: "tracker_summary" });
 
-      await sendBotMessage(
-        login,
-        "Напиши название задачи одним сообщением",
-        "none"
-      );
-
+      await sendBotMessage(login, "Напиши название задачи", "none");
       return res.status(200).end();
     }
 
-    if (serverActionName === "open_templates") {
-      await sendBotMessage(
-        login,
-        "Выбери нужный шаблон",
-        "templates"
-      );
-      return res.status(200).end();
-    }
-
-    if (serverActionName === "back_to_main_menu") {
-      await sendBotMessage(
-        login,
-        "Главное меню",
-        "main"
-      );
-      return res.status(200).end();
-    }
-
-    if (serverActionName === "send_template_card") {
-      await sendBotMessage(
-        login,
-        `Карточка:\n${TEMPLATE_FILES.card.url}`,
-        "templates"
-      );
-      return res.status(200).end();
-    }
-
-    if (serverActionName === "send_template_specification") {
-      await sendBotMessage(
-        login,
-        `Спецификация:\n${TEMPLATE_FILES.specification.url}`,
-        "templates"
-      );
-      return res.status(200).end();
-    }
-
-    if (!text) {
-      await sendBotMessage(
-        login,
-        "Нажми кнопку ниже",
-        "main"
-      );
-      return res.status(200).end();
-    }
-
-    const currentState = userStates.get(login);
-
-    if (!currentState) {
-      await sendBotMessage(
-        login,
-        "Нажми кнопку ниже",
-        "main"
-      );
-      return res.status(200).end();
-    }
-
-    if (!user) {
-      userStates.delete(login);
-
-      await sendBotMessage(
-        login,
-        "Ты пока не настроен в боте. Обратись к администратору.",
-        "main"
-      );
-      return res.status(200).end();
-    }
-
-    if (currentState.step === "awaiting_summary") {
-      userStates.set(login, {
-        step: "awaiting_description",
-        summary: text
-      });
-
-      await sendBotMessage(
-        login,
-        "Теперь напиши описание задачи одним сообщением",
-        "none"
-      );
-
-      return res.status(200).end();
-    }
-
-    if (currentState.step === "awaiting_description") {
-      const summary = currentState.summary;
-      const description = text;
-
-      userStates.delete(login);
-
-      const tracker = await createTrackerIssue(summary, description, login);
-
-      if (tracker.ok) {
-        const issueKey = tracker?.data?.key || "создана";
-        await sendBotMessage(
-          login,
-          `Задача создана: ${issueKey}`,
-          "main"
-        );
-      } else {
-        await sendBotMessage(
-          login,
-          `Не удалось создать задачу. Код: ${tracker.status}`,
-          "main"
-        );
+    if (action === "create_bitrix_lead") {
+      if (!user?.bitrixAssignedById) {
+        await sendBotMessage(login, "Нет доступа к CRM", "main");
+        return res.status(200).end();
       }
+
+      userStates.set(login, { step: "bitrix_title" });
+
+      await sendBotMessage(login, "Введи артикул клиента", "none");
+      return res.status(200).end();
+    }
+
+    if (action === "open_templates") {
+      await sendBotMessage(login, "Выбери шаблон", "templates");
+      return res.status(200).end();
+    }
+
+    if (action === "back_to_main_menu") {
+      await sendBotMessage(login, "Главное меню", "main");
+      return res.status(200).end();
+    }
+
+    if (action === "send_template_card") {
+      await sendBotMessage(login, TEMPLATE_FILES.card.url, "templates");
+      return res.status(200).end();
+    }
+
+    if (action === "send_template_specification") {
+      await sendBotMessage(login, TEMPLATE_FILES.specification.url, "templates");
+      return res.status(200).end();
+    }
+
+    // --- СОСТОЯНИЯ ---
+    const state = userStates.get(login);
+
+    if (!state) {
+      await sendBotMessage(login, "Нажми кнопку ниже", "main");
+      return res.status(200).end();
+    }
+
+    // TRACKER
+    if (state.step === "tracker_summary") {
+      userStates.set(login, { step: "tracker_description", summary: text });
+      await sendBotMessage(login, "Теперь описание задачи", "none");
+      return res.status(200).end();
+    }
+
+    if (state.step === "tracker_description") {
+      userStates.delete(login);
+
+      const result = await createTrackerIssue(state.summary, text, login);
+
+      await sendBotMessage(
+        login,
+        result.ok ? "Задача создана" : "Ошибка создания задачи",
+        "main"
+      );
+
+      return res.status(200).end();
+    }
+
+    // BITRIX
+    if (state.step === "bitrix_title") {
+      userStates.set(login, { step: "bitrix_comment", title: text });
+      await sendBotMessage(login, "Напиши комментарий", "none");
+      return res.status(200).end();
+    }
+
+    if (state.step === "bitrix_comment") {
+      userStates.delete(login);
+
+      const result = await createBitrixLead(
+        state.title,
+        text,
+        login
+      );
+
+      await sendBotMessage(
+        login,
+        result.ok ? "Лид создан в CRM" : "Ошибка CRM",
+        "main"
+      );
 
       return res.status(200).end();
     }
 
     userStates.delete(login);
 
-    await sendBotMessage(
-      login,
-      "Что-то пошло не так. Нажми кнопку ниже ещё раз.",
-      "main"
-    );
+    await sendBotMessage(login, "Ошибка, начни заново", "main");
 
     return res.status(200).end();
-  } catch (error) {
-    console.log("WEBHOOK ERROR:", error?.message || error);
+  } catch (e) {
+    console.log("ERROR:", e);
     return res.status(200).end();
   }
 }
