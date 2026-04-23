@@ -16,7 +16,8 @@ const USERS = {
   "daria@panelgroup.ru": {
     queue: "DARIAISAEVA",
     assignee: "daria",
-    tag: "from_bot_personal"
+    tag: "from_bot_personal",
+    bitrixAssignedById: 3482
   }
 };
 
