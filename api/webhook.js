@@ -94,7 +94,6 @@ function getFilesFromUpdate(update) {
   if (Array.isArray(update?.images)) {
     for (const imageGroup of update.images) {
       if (!Array.isArray(imageGroup) || imageGroup.length === 0) continue;
-
       const original = imageGroup[imageGroup.length - 1];
 
       if (original?.file_id) {
@@ -119,9 +118,7 @@ async function downloadMessengerFile(fileId) {
         Authorization: `OAuth ${process.env.BOT_TOKEN}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        file_id: fileId
-      })
+      body: JSON.stringify({ file_id: fileId })
     }
   );
 
@@ -138,11 +135,7 @@ async function attachFileToTrackerIssue(issueKey, fileId, filename) {
   const fileBuffer = await downloadMessengerFile(fileId);
 
   const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob([fileBuffer]),
-    filename
-  );
+  formData.append("file", new Blob([fileBuffer]), filename);
 
   const response = await fetch(
     `https://api.tracker.yandex.net/v3/issues/${issueKey}/attachments/?filename=${encodeURIComponent(filename)}`,
@@ -177,7 +170,6 @@ async function attachFilesToTrackerIssue(issueKey, files) {
         file.id,
         file.name || "file"
       );
-
       results.push(result);
     } catch (error) {
       console.log("ATTACH FILE ERROR:", error?.message || error);
@@ -203,9 +195,7 @@ async function addCommentToTrackerIssue(issueKey, text) {
         "X-Org-ID": process.env.ORG_ID,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        text
-      })
+      body: JSON.stringify({ text })
     }
   );
 
@@ -297,29 +287,10 @@ export default async function handler(req, res) {
     const update = req.body?.updates?.[0];
     if (!update) return res.status(200).end();
 
-    if (update?.attachments) {
-      console.log("ATTACHMENTS:", JSON.stringify(update.attachments, null, 2));
-    }
-
-    if (update?.files) {
-      console.log("FILES:", JSON.stringify(update.files, null, 2));
-    }
-
-    if (update?.message?.attachments) {
-      console.log("MESSAGE ATTACHMENTS:", JSON.stringify(update.message.attachments, null, 2));
-    }
-
-    if (update?.file) {
-      console.log("UPDATE FILE:", JSON.stringify(update.file, null, 2));
-    }
-
-    if (update?.images) {
-      console.log("UPDATE IMAGES:", JSON.stringify(update.images, null, 2));
-    }
-
     const login = update?.from?.login;
     const text = (update?.text || "").trim();
     const action = update?.bot_request?.server_action?.name;
+    const files = getFilesFromUpdate(update);
 
     const user = USERS[login];
 
@@ -450,9 +421,16 @@ export default async function handler(req, res) {
     }
 
     if (state.step === "montazh_files") {
-      userStates.delete(login);
+      if (!files.length && !text) {
+        await sendBotMessage(
+          login,
+          "Прикрепи файлы или нажми кнопку «Пропустить»",
+          "montazh_files"
+        );
+        return res.status(200).end();
+      }
 
-      const files = getFilesFromUpdate(update);
+      userStates.delete(login);
 
       const filesInfo = files.length
         ? files.map((file) => file.name || file.id).join(", ")
