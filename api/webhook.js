@@ -94,6 +94,7 @@ function getFilesFromUpdate(update) {
   if (Array.isArray(update?.images)) {
     for (const imageGroup of update.images) {
       if (!Array.isArray(imageGroup) || imageGroup.length === 0) continue;
+
       const original = imageGroup[imageGroup.length - 1];
 
       if (original?.file_id) {
@@ -118,7 +119,9 @@ async function downloadMessengerFile(fileId) {
         Authorization: `OAuth ${process.env.BOT_TOKEN}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ file_id: fileId })
+      body: JSON.stringify({
+        file_id: fileId
+      })
     }
   );
 
@@ -135,7 +138,11 @@ async function attachFileToTrackerIssue(issueKey, fileId, filename) {
   const fileBuffer = await downloadMessengerFile(fileId);
 
   const formData = new FormData();
-  formData.append("file", new Blob([fileBuffer]), filename);
+  formData.append(
+    "file",
+    new Blob([fileBuffer]),
+    filename
+  );
 
   const response = await fetch(
     `https://api.tracker.yandex.net/v3/issues/${issueKey}/attachments/?filename=${encodeURIComponent(filename)}`,
@@ -155,8 +162,7 @@ async function attachFileToTrackerIssue(issueKey, fileId, filename) {
   return {
     ok: response.ok,
     status: response.status,
-    raw: resultText,
-    filename
+    raw: resultText
   };
 }
 
@@ -170,43 +176,19 @@ async function attachFilesToTrackerIssue(issueKey, files) {
         file.id,
         file.name || "file"
       );
+
       results.push(result);
     } catch (error) {
       console.log("ATTACH FILE ERROR:", error?.message || error);
       results.push({
         ok: false,
         status: 0,
-        raw: error?.message || "attach_error",
-        filename: file.name || "file"
+        raw: error?.message || "attach_error"
       });
     }
   }
 
   return results;
-}
-
-async function addCommentToTrackerIssue(issueKey, text) {
-  const response = await fetch(
-    `https://api.tracker.yandex.net/v3/issues/${issueKey}/comments`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `OAuth ${process.env.OAUTH_TOKEN}`,
-        "X-Org-ID": process.env.ORG_ID,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ text })
-    }
-  );
-
-  const resultText = await response.text();
-  console.log("TRACKER COMMENT RESPONSE:", response.status, resultText);
-
-  return {
-    ok: response.ok,
-    status: response.status,
-    raw: resultText
-  };
 }
 
 async function createTrackerIssue(summary, description, login) {
@@ -287,10 +269,29 @@ export default async function handler(req, res) {
     const update = req.body?.updates?.[0];
     if (!update) return res.status(200).end();
 
+    if (update?.attachments) {
+      console.log("ATTACHMENTS:", JSON.stringify(update.attachments, null, 2));
+    }
+
+    if (update?.files) {
+      console.log("FILES:", JSON.stringify(update.files, null, 2));
+    }
+
+    if (update?.message?.attachments) {
+      console.log("MESSAGE ATTACHMENTS:", JSON.stringify(update.message.attachments, null, 2));
+    }
+
+    if (update?.file) {
+      console.log("UPDATE FILE:", JSON.stringify(update.file, null, 2));
+    }
+
+    if (update?.images) {
+      console.log("UPDATE IMAGES:", JSON.stringify(update.images, null, 2));
+    }
+
     const login = update?.from?.login;
     const text = (update?.text || "").trim();
     const action = update?.bot_request?.server_action?.name;
-    const files = getFilesFromUpdate(update);
 
     const user = USERS[login];
 
@@ -421,16 +422,9 @@ export default async function handler(req, res) {
     }
 
     if (state.step === "montazh_files") {
-      if (!files.length && !text) {
-        await sendBotMessage(
-          login,
-          "Прикрепи файлы или нажми кнопку «Пропустить»",
-          "montazh_files"
-        );
-        return res.status(200).end();
-      }
-
       userStates.delete(login);
+
+      const files = getFilesFromUpdate(update);
 
       const filesInfo = files.length
         ? files.map((file) => file.name || file.id).join(", ")
@@ -451,17 +445,6 @@ export default async function handler(req, res) {
         );
 
         const attachedCount = attachResults.filter((item) => item.ok).length;
-        const attachedNames = attachResults
-          .filter((item) => item.ok)
-          .map((item) => `• ${item.filename}`)
-          .join("\n");
-
-        if (attachedCount > 0) {
-          await addCommentToTrackerIssue(
-            result.data.key,
-            `Файлы от замера / монтажа:\n\n${attachedNames}`
-          );
-        }
 
         await sendBotMessage(
           login,
