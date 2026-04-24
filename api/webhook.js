@@ -40,30 +40,10 @@ async function sendBotMessage(login, text, menu = "main") {
       layout: "true",
       persist: true,
       buttons: [
-        [
-          {
-            title: "Трекер: личная задача",
-            directives: [{ type: "server_action", name: "create_personal_task" }]
-          }
-        ],
-        [
-          {
-            title: "Трекер: замер / монтаж",
-            directives: [{ type: "server_action", name: "create_montazh_task" }]
-          }
-        ],
-        [
-          {
-            title: "CRM: новый лид",
-            directives: [{ type: "server_action", name: "create_bitrix_lead" }]
-          }
-        ],
-        [
-          {
-            title: "Шаблоны",
-            directives: [{ type: "server_action", name: "open_templates" }]
-          }
-        ]
+        [{ title: "Трекер: личная задача", directives: [{ type: "server_action", name: "create_personal_task" }] }],
+        [{ title: "Трекер: замер / монтаж", directives: [{ type: "server_action", name: "create_montazh_task" }] }],
+        [{ title: "CRM: новый лид", directives: [{ type: "server_action", name: "create_bitrix_lead" }] }],
+        [{ title: "Шаблоны", directives: [{ type: "server_action", name: "open_templates" }] }]
       ]
     };
   }
@@ -73,24 +53,9 @@ async function sendBotMessage(login, text, menu = "main") {
       layout: "true",
       persist: true,
       buttons: [
-        [
-          {
-            title: "Карточка",
-            directives: [{ type: "server_action", name: "send_template_card" }]
-          }
-        ],
-        [
-          {
-            title: "Спецификация",
-            directives: [{ type: "server_action", name: "send_template_specification" }]
-          }
-        ],
-        [
-          {
-            title: "Назад",
-            directives: [{ type: "server_action", name: "back_to_main_menu" }]
-          }
-        ]
+        [{ title: "Карточка", directives: [{ type: "server_action", name: "send_template_card" }] }],
+        [{ title: "Спецификация", directives: [{ type: "server_action", name: "send_template_specification" }] }],
+        [{ title: "Назад", directives: [{ type: "server_action", name: "back_to_main_menu" }] }]
       ]
     };
   }
@@ -100,12 +65,7 @@ async function sendBotMessage(login, text, menu = "main") {
       layout: "true",
       persist: false,
       buttons: [
-        [
-          {
-            title: "Пропустить",
-            directives: [{ type: "server_action", name: "skip_montazh_files" }]
-          }
-        ]
+        [{ title: "Пропустить", directives: [{ type: "server_action", name: "skip_montazh_files" }] }]
       ]
     };
   }
@@ -175,20 +135,17 @@ ${volume}
 async function createBitrixLead(title, comment, login) {
   const user = USERS[login];
 
-  const response = await fetch(
-    `${process.env.BITRIX_WEBHOOK}crm.lead.add.json`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fields: {
-          TITLE: title,
-          COMMENTS: comment,
-          ASSIGNED_BY_ID: user?.bitrixAssignedById || 1
-        }
-      })
-    }
-  );
+  const response = await fetch(`${process.env.BITRIX_WEBHOOK}crm.lead.add.json`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fields: {
+        TITLE: title,
+        COMMENTS: comment,
+        ASSIGNED_BY_ID: user?.bitrixAssignedById || 1
+      }
+    })
+  });
 
   const data = await response.json();
   return { ok: response.ok, data };
@@ -196,8 +153,22 @@ async function createBitrixLead(title, comment, login) {
 
 export default async function handler(req, res) {
   try {
+    console.log("FULL UPDATE:", JSON.stringify(req.body, null, 2));
+
     const update = req.body?.updates?.[0];
     if (!update) return res.status(200).end();
+
+    if (update?.attachments) {
+      console.log("ATTACHMENTS:", JSON.stringify(update.attachments, null, 2));
+    }
+
+    if (update?.files) {
+      console.log("FILES:", JSON.stringify(update.files, null, 2));
+    }
+
+    if (update?.message?.attachments) {
+      console.log("MESSAGE ATTACHMENTS:", JSON.stringify(update.message.attachments, null, 2));
+    }
 
     const login = update?.from?.login;
     const text = (update?.text || "").trim();
@@ -205,7 +176,6 @@ export default async function handler(req, res) {
 
     const user = USERS[login];
 
-    // --- КНОПКИ ---
     if (action === "create_personal_task") {
       if (!user) {
         await sendBotMessage(login, "Ты не настроен", "main");
@@ -213,14 +183,12 @@ export default async function handler(req, res) {
       }
 
       userStates.set(login, { step: "tracker_summary" });
-
       await sendBotMessage(login, "Напиши название задачи", "none");
       return res.status(200).end();
     }
 
     if (action === "create_montazh_task") {
       userStates.set(login, { step: "montazh_address" });
-
       await sendBotMessage(login, "Введи адрес замера / монтажа", "none");
       return res.status(200).end();
     }
@@ -257,7 +225,6 @@ export default async function handler(req, res) {
       }
 
       userStates.set(login, { step: "bitrix_title" });
-
       await sendBotMessage(login, "Введи артикул клиента", "none");
       return res.status(200).end();
     }
@@ -282,7 +249,6 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // --- СОСТОЯНИЯ ---
     const state = userStates.get(login);
 
     if (!state) {
@@ -290,7 +256,6 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // TRACKER: ЛИЧНАЯ ЗАДАЧА
     if (state.step === "tracker_summary") {
       userStates.set(login, { step: "tracker_description", summary: text });
       await sendBotMessage(login, "Теперь описание задачи", "none");
@@ -311,7 +276,6 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // TRACKER: ЗАМЕР / МОНТАЖ
     if (state.step === "montazh_address") {
       userStates.set(login, {
         step: "montazh_volume",
@@ -360,7 +324,6 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // BITRIX
     if (state.step === "bitrix_title") {
       userStates.set(login, { step: "bitrix_comment", title: text });
       await sendBotMessage(login, "Напиши комментарий", "none");
@@ -370,11 +333,7 @@ export default async function handler(req, res) {
     if (state.step === "bitrix_comment") {
       userStates.delete(login);
 
-      const result = await createBitrixLead(
-        state.title,
-        text,
-        login
-      );
+      const result = await createBitrixLead(state.title, text, login);
 
       await sendBotMessage(
         login,
@@ -386,7 +345,6 @@ export default async function handler(req, res) {
     }
 
     userStates.delete(login);
-
     await sendBotMessage(login, "Ошибка, начни заново", "main");
 
     return res.status(200).end();
