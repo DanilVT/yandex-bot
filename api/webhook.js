@@ -48,6 +48,12 @@ async function sendBotMessage(login, text, menu = "main") {
         ],
         [
           {
+            title: "Трекер: замер / монтаж",
+            directives: [{ type: "server_action", name: "create_montazh_task" }]
+          }
+        ],
+        [
+          {
             title: "CRM: новый лид",
             directives: [{ type: "server_action", name: "create_bitrix_lead" }]
           }
@@ -89,6 +95,21 @@ async function sendBotMessage(login, text, menu = "main") {
     };
   }
 
+  if (menu === "montazh_files") {
+    body.suggest_buttons = {
+      layout: "true",
+      persist: false,
+      buttons: [
+        [
+          {
+            title: "Пропустить",
+            directives: [{ type: "server_action", name: "skip_montazh_files" }]
+          }
+        ]
+      ]
+    };
+  }
+
   await fetch("https://botapi.messenger.yandex.net/bot/v1/messages/sendText/", {
     method: "POST",
     headers: {
@@ -116,6 +137,34 @@ async function createTrackerIssue(summary, description, login) {
       queue: user.queue,
       assignee: user.assignee,
       tags: [user.tag]
+    })
+  });
+
+  const data = await response.json();
+  return { ok: response.ok, data };
+}
+
+async function createMontazhIssue(address, volume, filesInfo = "не приложены") {
+  const description = `Адрес: ${address}
+
+Объём замера / монтажа:
+${volume}
+
+Файлы: ${filesInfo}`;
+
+  const response = await fetch("https://api.tracker.yandex.net/v3/issues/", {
+    method: "POST",
+    headers: {
+      Authorization: `OAuth ${process.env.OAUTH_TOKEN}`,
+      "X-Org-ID": process.env.ORG_ID,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      summary: `Замер / монтаж — ${address}`,
+      description,
+      queue: "MONTAZH",
+      assignee: "danil",
+      tags: ["montazh_from_bot"]
     })
   });
 
@@ -169,6 +218,38 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
+    if (action === "create_montazh_task") {
+      userStates.set(login, { step: "montazh_address" });
+
+      await sendBotMessage(login, "Введи адрес замера / монтажа", "none");
+      return res.status(200).end();
+    }
+
+    if (action === "skip_montazh_files") {
+      const state = userStates.get(login);
+
+      if (!state || state.step !== "montazh_files") {
+        await sendBotMessage(login, "Нажми кнопку ниже", "main");
+        return res.status(200).end();
+      }
+
+      userStates.delete(login);
+
+      const result = await createMontazhIssue(
+        state.address,
+        state.volume,
+        "не приложены"
+      );
+
+      await sendBotMessage(
+        login,
+        result.ok ? "Задача по замеру / монтажу создана" : "Ошибка создания задачи",
+        "main"
+      );
+
+      return res.status(200).end();
+    }
+
     if (action === "create_bitrix_lead") {
       if (!user?.bitrixAssignedById) {
         await sendBotMessage(login, "Нет доступа к CRM", "main");
@@ -209,7 +290,7 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
-    // TRACKER
+    // TRACKER: ЛИЧНАЯ ЗАДАЧА
     if (state.step === "tracker_summary") {
       userStates.set(login, { step: "tracker_description", summary: text });
       await sendBotMessage(login, "Теперь описание задачи", "none");
@@ -224,6 +305,55 @@ export default async function handler(req, res) {
       await sendBotMessage(
         login,
         result.ok ? "Задача создана" : "Ошибка создания задачи",
+        "main"
+      );
+
+      return res.status(200).end();
+    }
+
+    // TRACKER: ЗАМЕР / МОНТАЖ
+    if (state.step === "montazh_address") {
+      userStates.set(login, {
+        step: "montazh_volume",
+        address: text
+      });
+
+      await sendBotMessage(login, "Введи объём замера / монтажа", "none");
+      return res.status(200).end();
+    }
+
+    if (state.step === "montazh_volume") {
+      userStates.set(login, {
+        step: "montazh_files",
+        address: state.address,
+        volume: text
+      });
+
+      await sendBotMessage(
+        login,
+        "Прикрепи файлы или нажми кнопку «Пропустить»",
+        "montazh_files"
+      );
+
+      return res.status(200).end();
+    }
+
+    if (state.step === "montazh_files") {
+      userStates.delete(login);
+
+      const filesInfo = text
+        ? text
+        : "файл был отправлен в чат, но пока не прикреплён к задаче автоматически";
+
+      const result = await createMontazhIssue(
+        state.address,
+        state.volume,
+        filesInfo
+      );
+
+      await sendBotMessage(
+        login,
+        result.ok ? "Задача по замеру / монтажу создана" : "Ошибка создания задачи",
         "main"
       );
 
