@@ -386,7 +386,9 @@ export default async function handler(req, res) {
 
       await sendBotMessage(
         login,
-        result.ok ? "Задача создана" : "Ошибка создания задачи",
+        result.ok 
+          ? `Задача создана: ${result.data.key}`
+          : "Ошибка создания задачи",
         "main"
       );
 
