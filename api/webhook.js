@@ -162,7 +162,8 @@ async function attachFileToTrackerIssue(issueKey, fileId, filename) {
   return {
     ok: response.ok,
     status: response.status,
-    raw: resultText
+    raw: resultText,
+    filename
   };
 }
 
@@ -183,12 +184,39 @@ async function attachFilesToTrackerIssue(issueKey, files) {
       results.push({
         ok: false,
         status: 0,
-        raw: error?.message || "attach_error"
+        raw: error?.message || "attach_error",
+        filename: file.name || "file"
       });
     }
   }
 
   return results;
+}
+
+async function addCommentToTrackerIssue(issueKey, text) {
+  const response = await fetch(
+    `https://api.tracker.yandex.net/v3/issues/${issueKey}/comments`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `OAuth ${process.env.OAUTH_TOKEN}`,
+        "X-Org-ID": process.env.ORG_ID,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text
+      })
+    }
+  );
+
+  const resultText = await response.text();
+  console.log("TRACKER COMMENT RESPONSE:", response.status, resultText);
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    raw: resultText
+  };
 }
 
 async function createTrackerIssue(summary, description, login) {
@@ -445,6 +473,17 @@ export default async function handler(req, res) {
         );
 
         const attachedCount = attachResults.filter((item) => item.ok).length;
+        const attachedNames = attachResults
+          .filter((item) => item.ok)
+          .map((item) => `• ${item.filename}`)
+          .join("\n");
+
+        if (attachedCount > 0) {
+          await addCommentToTrackerIssue(
+            result.data.key,
+            `Файлы от замера / монтажа:\n\n${attachedNames}`
+          );
+        }
 
         await sendBotMessage(
           login,
