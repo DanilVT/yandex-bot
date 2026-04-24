@@ -218,8 +218,7 @@ async function createTrackerIssue(summary, description, login) {
 async function createMontazhIssue(article, address, volume, hasFiles = false) {
   const description = `Адрес: ${address}
 
-Объём замера / монтажа:
-${volume}${hasFiles ? "\n\nФайл: есть, смотри вложения в самом конце" : ""}`;
+Объём замера / монтажа: ${volume}${hasFiles ? "\n\nФайл: есть, смотри вложения в самом конце" : ""}`;
 
   const response = await fetch("https://api.tracker.yandex.net/v3/issues/", {
     method: "POST",
@@ -229,7 +228,7 @@ ${volume}${hasFiles ? "\n\nФайл: есть, смотри вложения в 
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      summary: `Замер (${article})`,
+      summary: article,
       description,
       queue: "MONTAZH",
       assignee: "danil",
@@ -306,7 +305,7 @@ export default async function handler(req, res) {
 
     if (action === "create_montazh_task") {
       userStates.set(login, { step: "montazh_article" });
-      await sendBotMessage(login, "Введи артикул", "none");
+      await sendBotMessage(login, "Введите название задачи\nПример: Замер (артикул)", "none");
       return res.status(200).end();
     }
 
