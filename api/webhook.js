@@ -215,13 +215,11 @@ async function createTrackerIssue(summary, description, login) {
   return { ok: response.ok, data };
 }
 
-async function createMontazhIssue(address, volume, filesInfo = "не приложены") {
+async function createMontazhIssue(article, address, volume, hasFiles = false) {
   const description = `Адрес: ${address}
 
 Объём замера / монтажа:
-${volume}
-
-Файлы: ${filesInfo}`;
+${volume}${hasFiles ? "\n\nФайл: есть, смотри вложения в самом конце" : ""}`;
 
   const response = await fetch("https://api.tracker.yandex.net/v3/issues/", {
     method: "POST",
@@ -231,7 +229,7 @@ ${volume}
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      summary: `Замер / монтаж — ${address}`,
+      summary: `Замер (${article})`,
       description,
       queue: "MONTAZH",
       assignee: "danil",
@@ -307,8 +305,8 @@ export default async function handler(req, res) {
     }
 
     if (action === "create_montazh_task") {
-      userStates.set(login, { step: "montazh_address" });
-      await sendBotMessage(login, "Введи адрес замера / монтажа", "none");
+      userStates.set(login, { step: "montazh_article" });
+      await sendBotMessage(login, "Введи артикул", "none");
       return res.status(200).end();
     }
 
@@ -323,9 +321,10 @@ export default async function handler(req, res) {
       userStates.delete(login);
 
       const result = await createMontazhIssue(
+        state.article,
         state.address,
         state.volume,
-        "не приложены"
+        false
       );
 
       await sendBotMessage(
@@ -395,9 +394,20 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
+    if (state.step === "montazh_article") {
+      userStates.set(login, {
+        step: "montazh_address",
+        article: text
+      });
+
+      await sendBotMessage(login, "Введи адрес замера / монтажа", "none");
+      return res.status(200).end();
+    }
+
     if (state.step === "montazh_address") {
       userStates.set(login, {
         step: "montazh_volume",
+        article: state.article,
         address: text
       });
 
@@ -408,6 +418,7 @@ export default async function handler(req, res) {
     if (state.step === "montazh_volume") {
       userStates.set(login, {
         step: "montazh_files",
+        article: state.article,
         address: state.address,
         volume: text
       });
@@ -425,20 +436,16 @@ export default async function handler(req, res) {
       userStates.delete(login);
 
       const files = getFilesFromUpdate(update);
-
-      const filesInfo = files.length
-        ? files.map((file) => file.name || file.id).join(", ")
-        : text
-          ? text
-          : "не приложены";
+      const hasFiles = files.length > 0;
 
       const result = await createMontazhIssue(
+        state.article,
         state.address,
         state.volume,
-        filesInfo
+        hasFiles
       );
 
-      if (result.ok && result?.data?.key && files.length) {
+      if (result.ok && result?.data?.key && hasFiles) {
         const attachResults = await attachFilesToTrackerIssue(
           result.data.key,
           files
