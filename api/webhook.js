@@ -29,6 +29,10 @@ const TEMPLATE_FILES = {
   specification: {
     url: "https://yandex-bot.vercel.app/templates/specification.docx",
     filename: "Спецификация.docx"
+  },
+  qrPaymentFiz: {
+    url: "https://yandex-bot.vercel.app/templates/qr-oplata-fiz.pdf",
+    filename: "QR оплата физ.pdf"
   }
 };
 
@@ -43,6 +47,7 @@ async function sendBotMessage(login, text, menu = "main") {
         [{ title: "Трекер: личная задача", directives: [{ type: "server_action", name: "create_personal_task" }] }],
         [{ title: "Трекер: замер / монтаж", directives: [{ type: "server_action", name: "create_montazh_task" }] }],
         [{ title: "CRM: новый лид", directives: [{ type: "server_action", name: "create_bitrix_lead" }] }],
+        [{ title: "QR: оплата физ", directives: [{ type: "server_action", name: "send_qr_payment_fiz" }] }],
         [{ title: "Шаблоны", directives: [{ type: "server_action", name: "open_templates" }] }]
       ]
     };
@@ -346,6 +351,15 @@ export default async function handler(req, res) {
       return res.status(200).end();
     }
 
+    if (action === "send_qr_payment_fiz") {
+      await sendBotMessage(
+        login,
+        `QR для оплаты физ. лицом:\n${TEMPLATE_FILES.qrPaymentFiz.url}`,
+        "main"
+      );
+      return res.status(200).end();
+    }
+
     if (action === "open_templates") {
       await sendBotMessage(login, "Выбери шаблон", "templates");
       return res.status(200).end();
@@ -386,7 +400,7 @@ export default async function handler(req, res) {
 
       await sendBotMessage(
         login,
-        result.ok 
+        result.ok
           ? `Задача создана: ${result.data.key}`
           : "Ошибка создания задачи",
         "main"
